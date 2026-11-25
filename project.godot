@@ -1,0 +1,28 @@
+; Engine configuration file.
+; Projeto "Ultima Zona" - Godot 3.5 (GLES2, feito para PCs fracos)
+
+config_version=4
+
+[application]
+
+config/name="Ultima Zona"
+run/main_scene="res://main.tscn"
+
+[display]
+
+window/size/width=960
+window/size/height=540
+window/vsync/use_vsync=true
+window/stretch/mode="viewport"
+window/stretch/aspect="keep"
+
+[rendering]
+
+quality/driver/driver_name="GLES2"
+quality/depth/hdr=false
+quality/filters/msaa=0
+quality/shading/force_vertex_shading=true
+quality/shading/force_lambert_over_burley=true
+quality/shading/force_blinn_over_ggx=true
+quality/directional_shadow/size=512
+environment/default_clear_color=Color( 0.55, 0.75, 0.95, 1 )
