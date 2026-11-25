@@ -1,0 +1,35 @@
+name: Build Windows (.exe)
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 3.5.3
+
+jobs:
+  export-windows:
+    name: Exportar para Windows
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:3.5.3
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar templates de exportacao
+        run: |
+          mkdir -v -p ~/.local/share/godot/templates
+          mv /root/.local/share/godot/templates/${GODOT_VERSION}.stable ~/.local/share/godot/templates/${GODOT_VERSION}.stable
+
+      - name: Exportar .exe
+        run: |
+          mkdir -v -p build
+          godot -v --export "Windows Desktop" build/UltimaZona.exe
+
+      - name: Enviar o jogo pronto
+        uses: actions/upload-artifact@v4
+        with:
+          name: UltimaZona-windows
+          path: build
