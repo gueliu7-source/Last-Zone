@@ -20,11 +20,20 @@ jobs:
           mkdir -v -p ~/.local/share/godot/templates
           ls -la /root/.local/share/godot/templates/ || true
           mv /root/.local/share/godot/templates/* ~/.local/share/godot/templates/ || true
+          echo "=== templates instalados ==="
+          ls -la ~/.local/share/godot/templates/ || true
+          echo "=== arquivos do projeto ==="
+          ls -la
 
       - name: Exportar .exe
         run: |
           mkdir -v -p build
-          godot -v --export "Windows Desktop" build/UltimaZona.exe
+          godot -v --export "Windows Desktop" build/UltimaZona.exe > export.log 2>&1 || true
+          echo "=========== RESUMO DOS ERROS ==========="
+          grep -v "NULL RID" export.log | grep -v "visual_server_raster" | grep -iE "error|cannot|invalid|fail|template|parse|missing|not found|export" | head -60 || true
+          echo "=========== ARQUIVOS GERADOS ==========="
+          ls -la build
+          test -f build/UltimaZona.exe
 
       - name: Enviar o jogo pronto
         uses: actions/upload-artifact@v4
