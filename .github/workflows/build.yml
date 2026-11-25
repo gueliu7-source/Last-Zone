@@ -17,13 +17,21 @@ jobs:
 
       - name: Preparar templates de exportacao
         run: |
-          mkdir -v -p ~/.local/share/godot/templates
-          ls -la /root/.local/share/godot/templates/ || true
-          mv /root/.local/share/godot/templates/* ~/.local/share/godot/templates/ || true
+          DEST=~/.local/share/godot/templates/3.6.2.stable
+          mkdir -v -p "$DEST"
+          SRC=$(find / -type f -name "windows_64_release.exe" -not -path "/proc/*" -not -path "$DEST/*" 2>/dev/null | head -1)
+          echo "Template encontrado em: $SRC"
+          if [ -n "$SRC" ]; then
+            cp -v "$(dirname "$SRC")"/* "$DEST"/
+          fi
+          if [ ! -f "$DEST/windows_64_release.exe" ]; then
+            echo "Nao achei na imagem, baixando templates do GitHub do Godot..."
+            wget -q "https://github.com/godotengine/godot/releases/download/3.6.2-stable/Godot_v3.6.2-stable_export_templates.tpz" -O /tmp/templates.zip
+            unzip -q -o /tmp/templates.zip -d /tmp/templates
+            cp -v /tmp/templates/templates/* "$DEST"/
+          fi
           echo "=== templates instalados ==="
-          ls -la ~/.local/share/godot/templates/ || true
-          echo "=== arquivos do projeto ==="
-          ls -la
+          ls -la "$DEST"
 
       - name: Exportar .exe
         run: |
