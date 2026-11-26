@@ -1,19 +1,19 @@
 extends Spatial
 # Zona segura que fecha em fases (estilo battle royale).
 
-const WAIT_TIME := 20.0
-const SHRINK_TIME := 15.0
+const WAIT_TIME := 25.0
+const SHRINK_TIME := 20.0
 
-var radii: Array = [88.0, 60.0, 38.0, 22.0, 10.0, 3.0]
+var radii: Array = [150.0, 105.0, 68.0, 40.0, 18.0, 5.0]
 
 var center := Vector3.ZERO
-var radius: float = 88.0
+var radius: float = 150.0
 var phase := 0
-var timer: float = 20.0
+var timer: float = 25.0
 var shrinking := false
 
-var from_radius: float = 88.0
-var to_radius: float = 88.0
+var from_radius: float = 150.0
+var to_radius: float = 150.0
 var from_center := Vector3.ZERO
 var to_center := Vector3.ZERO
 
@@ -40,7 +40,7 @@ func _build_tube() -> ArrayMesh:
     var st := SurfaceTool.new()
     st.begin(Mesh.PRIMITIVE_TRIANGLES)
     var n: int = 64
-    var h: float = 80.0
+    var h: float = 120.0
     for i in range(n):
         var a0: float = TAU * float(i) / float(n)
         var a1: float = TAU * float(i + 1) / float(n)

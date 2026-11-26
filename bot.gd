@@ -47,10 +47,11 @@ func _ready() -> void:
     base_color = palette[randi() % palette.size()]
 
     shape_node = CollisionShape.new()
-    var cyl := CylinderShape.new()
+    var cyl := CapsuleShape.new()
     cyl.radius = 0.4
-    cyl.height = 1.8
+    cyl.height = 1.0
     shape_node.shape = cyl
+    shape_node.rotation_degrees = Vector3(90, 0, 0)
     shape_node.translation = Vector3(0, 0.9, 0)
     add_child(shape_node)
 

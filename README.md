@@ -19,7 +19,9 @@ Cubos verdes = vida (+40) · Cubos amarelos = munição (+30)
 
 ## Arquivos
 
-- `main.gd` – mapa, itens, bots, HUD, qualidade automática
+- `main.gd` – carrega a ilha, itens, bots, HUD, qualidade automática
+- `island.glb` – mapa da ilha (terreno + construções + árvores, cor por vértice; gerado em código)
+- `map_data.gd` – colisores, itens, pontos de spawn e nomes das regiões do mapa
 - `player.gd` – jogador em 3ª pessoa, tiro e recarga
 - `bot.gd` – IA dos inimigos
 - `zone.gd` – zona segura que fecha
@@ -39,3 +41,10 @@ Ajustes rápidos (em `player.gd` e `bot.gd`):
 - `OUTLINE_WIDTH`: espessura do contorno (0.02 = 2 cm).
 - `GUN_POS_MODEL`: posição da arma na frente do personagem.
 Especificações para gerar outros modelos: veja `PROMPT_IA_3D.md`.
+
+## Mapa
+
+Ilha de ~330 m com 8 regiões: **Cidade** (centro), **Base Militar**, **Fábrica**, **Vila**, **Porto**,
+**Fazenda**, **Colina** (torre no topo) e **Floresta**, ligadas por estradas. O nome da região aparece
+no topo da tela. Zona segura começa com raio 150 m e fecha em 6 fases.
+Os prédios são blocos sólidos (sem interior). O mapa é pequeno em triângulos (~24 mil) para manter 60 fps.

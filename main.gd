@@ -6,9 +6,10 @@ const PlayerScript = preload("res://player.gd")
 const BotScript = preload("res://bot.gd")
 const ZoneScript = preload("res://zone.gd")
 const FX = preload("res://fx.gd")
+const MapData = preload("res://map_data.gd")
 
-const MAP_RADIUS := 85.0
 const BOT_COUNT := 15
+const PICKUP_COUNT := 44
 
 var rng := RandomNumberGenerator.new()
 var player
@@ -16,7 +17,7 @@ var zone
 var env
 var bots: Array = []
 var pickups: Array = []
-var obstacles: Array = []   # Vector3(x, raio, z)
+var last_region := ""
 var mat_cache := {}
 var kills := 0
 var rank := 0
@@ -33,6 +34,7 @@ var lbl_health
 var lbl_ammo
 var lbl_center
 var lbl_cross
+var lbl_region
 
 
 func _ready() -> void:
@@ -44,13 +46,13 @@ func _ready() -> void:
     OS.center_window()
 
     _setup_environment()
-    add_box(Vector3(0, -0.5, 0), Vector3(400, 1, 400), Color(0.28, 0.5, 0.25))
+    _build_island()
 
+    var pool: Array = MapData.SPAWNS.duplicate()
+    pool.shuffle()
     var spawns: Array = []
     for i in range(BOT_COUNT + 1):
-        spawns.append(_random_spawn(spawns))
-
-    _build_scenery(spawns)
+        spawns.append(pool[i % pool.size()])
 
     zone = ZoneScript.new()
     add_child(zone)
@@ -83,8 +85,8 @@ func _setup_environment() -> void:
     env.ambient_light_energy = 0.8
     env.fog_enabled = true
     env.fog_color = Color(0.55, 0.75, 0.95)
-    env.fog_depth_begin = 60.0
-    env.fog_depth_end = 125.0
+    env.fog_depth_begin = 85.0
+    env.fog_depth_end = 160.0
     var we := WorldEnvironment.new()
     we.environment = env
     add_child(we)
@@ -102,101 +104,84 @@ func _mat(color: Color):
     return mat_cache[color]
 
 
-func add_box(pos: Vector3, size: Vector3, color: Color) -> StaticBody:
-    var body := StaticBody.new()
-    body.translation = pos
-    var cs := CollisionShape.new()
-    var bs := BoxShape.new()
-    bs.extents = size / 2.0
-    cs.shape = bs
-    body.add_child(cs)
-    var mi := MeshInstance.new()
-    var cm := CubeMesh.new()
-    cm.size = size
-    mi.mesh = cm
-    mi.material_override = _mat(color)
-    mi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
-    body.add_child(mi)
-    add_child(body)
-    return body
+func _build_island() -> void:
+    # Água (plano grande no nível 0); a ilha fica por cima
+    var water := MeshInstance.new()
+    var pm := PlaneMesh.new()
+    pm.size = Vector2(900, 900)
+    water.mesh = pm
+    water.translation = Vector3(0, 0.0, 0)
+    var wmat := FX.make_mat(Color(0.18, 0.52, 0.78))
+    water.material_override = wmat
+    water.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
+    add_child(water)
+
+    var island_mat := SpatialMaterial.new()
+    island_mat.vertex_color_use_as_albedo = true
+    island_mat.params_cull_mode = SpatialMaterial.CULL_DISABLED
+    island_mat.roughness = 1.0
+    island_mat.metallic = 0.0
+
+    var root = null
+    if ResourceLoader.exists("res://island.glb"):
+        var res = load("res://island.glb")
+        if res != null and res is PackedScene:
+            root = res.instance()
+    if root != null:
+        add_child(root)
+        _style_island(root, island_mat)
+    else:
+        # Sem o arquivo da ilha: chão plano de emergência
+        var body := StaticBody.new()
+        var cs := CollisionShape.new()
+        var bs := BoxShape.new()
+        bs.extents = Vector3(170, 0.5, 170)
+        cs.shape = bs
+        body.add_child(cs)
+        body.translation = Vector3(0, 0.5, 0)
+        add_child(body)
+
+    # Colisores de prédios, árvores, caixas... (todos num corpo só)
+    var sb := StaticBody.new()
+    for b in MapData.BOXES:
+        var cs2 := CollisionShape.new()
+        var bs2 := BoxShape.new()
+        bs2.extents = Vector3(b[3], b[4], b[5]) * 0.5
+        cs2.shape = bs2
+        cs2.transform = Transform(Basis(Vector3(0, 1, 0), b[6]), Vector3(b[0], b[1], b[2]))
+        sb.add_child(cs2)
+    add_child(sb)
+
+    # Fundo do mar (rede de segurança) e paredes invisíveis na borda do mapa
+    var edge := StaticBody.new()
+    var floor_cs := CollisionShape.new()
+    var floor_bs := BoxShape.new()
+    floor_bs.extents = Vector3(260, 0.5, 260)
+    floor_cs.shape = floor_bs
+    floor_cs.translation = Vector3(0, -3.0, 0)
+    edge.add_child(floor_cs)
+    var h: float = MapData.HALF - 2.0
+    for w in [Vector3(0, 10, h), Vector3(0, 10, -h), Vector3(h, 10, 0), Vector3(-h, 10, 0)]:
+        var wc := CollisionShape.new()
+        var wb := BoxShape.new()
+        if abs(w.x) > 1.0:
+            wb.extents = Vector3(1, 20, 200)
+        else:
+            wb.extents = Vector3(200, 20, 1)
+        wc.shape = wb
+        wc.translation = w
+        edge.add_child(wc)
+    add_child(edge)
 
 
-func _random_spawn(existing: Array) -> Vector3:
-    var p := Vector3.ZERO
-    for _t in range(60):
-        var ang: float = rng.randf() * TAU
-        var r: float = rng.randf_range(10.0, MAP_RADIUS - 8.0)
-        p = Vector3(cos(ang) * r, 1.0, sin(ang) * r)
-        var ok := true
-        for s in existing:
-            if Vector2(p.x - s.x, p.z - s.z).length() < 22.0:
-                ok = false
-                break
-        if ok:
-            return p
-    return p
-
-
-func _free_point(spawns: Array, spawn_clear: float, own_radius: float) -> Vector3:
-    var p := Vector3.ZERO
-    for _t in range(40):
-        var ang: float = rng.randf() * TAU
-        var r: float = sqrt(rng.randf()) * (MAP_RADIUS + 5.0)
-        p = Vector3(cos(ang) * r, 0.0, sin(ang) * r)
-        var ok := true
-        for s in spawns:
-            if Vector2(p.x - s.x, p.z - s.z).length() < spawn_clear:
-                ok = false
-                break
-        if ok:
-            for o in obstacles:
-                if Vector2(p.x - o.x, p.z - o.z).length() < o.y + own_radius:
-                    ok = false
-                    break
-        if ok:
-            return p
-    return p
-
-
-func _build_scenery(spawns: Array) -> void:
-    var palette := [
-        Color(0.62, 0.6, 0.55), Color(0.5, 0.5, 0.52), Color(0.7, 0.62, 0.5),
-        Color(0.45, 0.48, 0.55), Color(0.65, 0.55, 0.5)
-    ]
-
-    # Construções
-    for _i in range(22):
-        var size := Vector3(rng.randf_range(6.0, 14.0), rng.randf_range(3.0, 7.0), rng.randf_range(6.0, 14.0))
-        var rad: float = max(size.x, size.z) * 0.5 + 1.0
-        var p: Vector3 = _free_point(spawns, 14.0, rad)
-        var col: Color = palette[rng.randi() % palette.size()]
-        add_box(Vector3(p.x, size.y / 2.0, p.z), size, col)
-        obstacles.append(Vector3(p.x, rad, p.z))
-
-    # Caixotes (cobertura)
-    for _i in range(18):
-        var p: Vector3 = _free_point(spawns, 4.0, 1.8)
-        add_box(Vector3(p.x, 0.75, p.z), Vector3(1.5, 1.5, 1.5), Color(0.55, 0.38, 0.2))
-        obstacles.append(Vector3(p.x, 1.8, p.z))
-
-    # Árvores
-    var leaf_mat = FX.make_mat(Color(0.12, 0.42, 0.14))
-    var leaf_mesh := SphereMesh.new()
-    leaf_mesh.radius = 2.2
-    leaf_mesh.height = 4.4
-    leaf_mesh.radial_segments = 8
-    leaf_mesh.rings = 4
-    for _i in range(45):
-        var p: Vector3 = _free_point(spawns, 3.0, 1.5)
-        var trunk := add_box(Vector3(p.x, 2.5, p.z), Vector3(0.7, 5.0, 0.7), Color(0.35, 0.22, 0.1))
-        var leaf := MeshInstance.new()
-        leaf.mesh = leaf_mesh
-        leaf.translation = Vector3(0, 3.5, 0)
-        leaf.material_override = leaf_mat
-        leaf.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
-        leaf.add_to_group("leaf")
-        trunk.add_child(leaf)
-        obstacles.append(Vector3(p.x, 1.5, p.z))
+func _style_island(node: Node, mat: Material) -> void:
+    if node is MeshInstance:
+        node.material_override = mat
+        node.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
+        if node.name.begins_with("T_"):
+            node.create_trimesh_collision()
+    for c in node.get_children():
+        _style_island(c, mat)
 
 
 func _spawn_pickups(spawns: Array) -> void:
@@ -213,11 +198,13 @@ func _spawn_pickups(spawns: Array) -> void:
     var box := CubeMesh.new()
     box.size = Vector3(0.7, 0.7, 0.7)
 
-    for i in range(26):
+    var loot: Array = MapData.LOOT.duplicate()
+    loot.shuffle()
+    for i in range(min(PICKUP_COUNT, loot.size())):
         var kind: String = "ammo"
         if i % 2 == 0:
             kind = "health"
-        var p: Vector3 = _free_point(spawns, 0.0, 1.0)
+        var p: Vector3 = loot[i]
         var mi := MeshInstance.new()
         mi.mesh = box
         if kind == "health":
@@ -225,7 +212,7 @@ func _spawn_pickups(spawns: Array) -> void:
         else:
             mi.material_override = ammo_mat
         mi.cast_shadow = GeometryInstance.SHADOW_CASTING_SETTING_OFF
-        mi.translation = Vector3(p.x, 0.8, p.z)
+        mi.translation = Vector3(p.x, p.y + 0.4, p.z)
         add_child(mi)
         pickups.append({"node": mi, "kind": kind})
 
@@ -289,6 +276,8 @@ func _build_hud() -> void:
     lbl_cross.visible = false
 
     lbl_center = _make_full_label(26)
+    lbl_region = _make_label(Control.PRESET_CENTER_TOP, 22)
+    lbl_region.margin_top = 40
 
 
 func _update_hud(captured: bool) -> void:
@@ -307,6 +296,7 @@ func _update_hud(captured: bool) -> void:
         a += "  (recarregando...)"
     lbl_ammo.text = a
     lbl_cross.visible = captured and not game_over
+    lbl_region.text = _region_name(player.translation)
     if not game_over:
         if captured:
             lbl_center.text = ""
@@ -314,19 +304,28 @@ func _update_hud(captured: bool) -> void:
             lbl_center.text = "CLIQUE PARA JOGAR\n\nWASD mover  •  Mouse mirar  •  Botão esquerdo atirar\nShift correr  •  Espaço pular  •  R recarregar  •  Esc pausar\nF11 tela cheia  •  F2 modo leve\n\nCubos verdes = vida  •  Cubos amarelos = munição\nFique dentro da zona segura!"
 
 
+func _region_name(p: Vector3) -> String:
+    var best: String = ""
+    var best_d: float = 1e9
+    for r in MapData.REGIONS:
+        var d: float = Vector2(p.x - r[1], p.z - r[2]).length()
+        if d <= r[3] and d < best_d:
+            best_d = d
+            best = r[0]
+    return best
+
+
 func set_quality(q: int) -> void:
     quality = q
     var cam = player.cam
     if q == 0:
-        cam.far = 130.0
-        env.fog_depth_begin = 60.0
-        env.fog_depth_end = 125.0
+        cam.far = 170.0
+        env.fog_depth_begin = 85.0
+        env.fog_depth_end = 160.0
     else:
-        cam.far = 70.0
-        env.fog_depth_begin = 30.0
-        env.fog_depth_end = 68.0
-    for l in get_tree().get_nodes_in_group("leaf"):
-        l.visible = (q == 0)
+        cam.far = 90.0
+        env.fog_depth_begin = 45.0
+        env.fog_depth_end = 85.0
 
 
 # ---------------------------------------------------------------- lógica
