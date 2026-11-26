@@ -23,8 +23,10 @@ Cubos verdes = vida (+40) · Cubos amarelos = munição (+30)
 - `island.glb` – mapa da ilha (terreno + construções + árvores, cor por vértice; gerado em código)
 - `map_data.gd` – colisores, itens, pontos de spawn e nomes das regiões do mapa
 - `player.gd` – jogador em 3ª pessoa, tiro e recarga
-- `bot.gd` – IA dos inimigos
+- `bot.gd` – IA dos inimigos (estados, combate, cobertura, cura)
+- `brain.gd` – memória que aprende como o jogador se move (salva em `user://brain.cfg`)
 - `zone.gd` – zona segura que fecha
+- `sfx.gd` – sons gerados por código (tiro, passo, vento, motor do avião...), sem arquivos de áudio
 - `fx.gd` – materiais leves e rastro de bala
 - `font.ttf` – Liberation Sans Bold (licença SIL OFL)
 
@@ -48,3 +50,20 @@ Ilha de ~330 m com 8 regiões: **Cidade** (centro), **Base Militar**, **Fábrica
 **Fazenda**, **Colina** (torre no topo) e **Floresta**, ligadas por estradas. O nome da região aparece
 no topo da tela. Zona segura começa com raio 150 m e fecha em 6 fases.
 Os prédios são blocos sólidos (sem interior). O mapa é pequeno em triângulos (~24 mil) para manter 60 fps.
+
+## Início da partida e sons
+
+Você começa num **avião** a 260 m de altura cruzando a ilha. **ESPAÇO** pula; na queda livre
+**ESPAÇO** abre o paraquedas (abre sozinho a 55 m do chão); WASD direciona. A zona só começa a
+fechar depois que você pousa, e os bots não atiram em quem está no ar.
+Sons: tiros (3D para os bots), passos, recarga, itens, vento da queda, motor do avião, aviso da zona,
+vitória e derrota. Tudo é calculado na hora de abrir o jogo.
+
+## IA dos bots
+
+Os bots patrulham entre as regiões, ouvem tiros e vão investigar (por isso brigam entre si),
+usam cobertura quando a vida está baixa, procuram cubos de cura, fogem da zona e perseguem quem os atacou.
+Eles **aprendem com você**: `brain.gd` observa durante os tiroteios se você desvia mais para a esquerda ou
+direita, se corre ou fica parado, e guarda isso entre partidas. Quanto mais você joga, mais eles
+antecipam seu movimento e mais precisos ficam ("IA: nível" no canto da tela). Para zerar o aprendizado,
+apague o arquivo `brain.cfg` da pasta de dados do jogo.

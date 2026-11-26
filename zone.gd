@@ -18,6 +18,7 @@ var from_center := Vector3.ZERO
 var to_center := Vector3.ZERO
 
 var mi
+var active := false   # a zona só começa a contar depois que o jogador pousa
 
 
 func _ready() -> void:
@@ -40,7 +41,7 @@ func _build_tube() -> ArrayMesh:
     var st := SurfaceTool.new()
     st.begin(Mesh.PRIMITIVE_TRIANGLES)
     var n: int = 64
-    var h: float = 120.0
+    var h: float = 400.0
     for i in range(n):
         var a0: float = TAU * float(i) / float(n)
         var a1: float = TAU * float(i + 1) / float(n)
@@ -58,6 +59,9 @@ func _build_tube() -> ArrayMesh:
 
 
 func _process(delta: float) -> void:
+    if not active:
+        _update_visual()
+        return
     if phase < radii.size() - 1:
         timer -= delta
         if not shrinking:
@@ -96,6 +100,8 @@ func damage_per_second() -> float:
 
 
 func status_text() -> String:
+    if not active:
+        return "Zona: começa quando você pousar"
     if phase >= radii.size() - 1:
         return "ZONA FINAL!  Dano: %d/s" % int(damage_per_second())
     if shrinking:
