@@ -4,6 +4,13 @@ extends KinematicBody
 signal bot_died(killer)
 
 const FX = preload("res://fx.gd")
+const CharacterScript = preload("res://character.gd")
+
+# Mesmos ajustes do jogador (veja player.gd)
+const MODEL_HEIGHT := 1.75
+const MODEL_YAW := 180.0
+const OUTLINE_WIDTH := 0.02
+const GUN_POS_MODEL := Vector3(-0.06, 1.23, -0.30)
 
 const MOVE_SPEED := 4.5
 const GRAVITY := 22.0
@@ -23,6 +30,7 @@ var stuck_t := 0.0
 var stuck_dir := Vector3.ZERO
 var flash_t := 0.0
 
+var chr = null
 var visual
 var mat
 var shape_node
@@ -51,34 +59,49 @@ func _ready() -> void:
 
     mat = FX.make_mat(base_color)
 
-    var body := MeshInstance.new()
-    var cm := CylinderMesh.new()
-    cm.top_radius = 0.35
-    cm.bottom_radius = 0.4
-    cm.height = 1.4
-    cm.radial_segments = 8
-    cm.rings = 1
-    body.mesh = cm
-    body.translation = Vector3(0, 0.7, 0)
-    body.material_override = mat
-    visual.add_child(body)
+    # Modelo 3D anime (res://bot.glb). Se não existir, usa o boneco simples colorido.
+    chr = CharacterScript.new()
+    visual.add_child(chr)
+    var model_path := "res://bot.glb"
+    if not ResourceLoader.exists(model_path):
+        model_path = "res://player.glb"   # sem bot.glb, os bots usam o mesmo modelo (com cor diferente)
+    if chr.setup(model_path, MODEL_HEIGHT, MODEL_YAW, OUTLINE_WIDTH):
+        chr.set_tint(base_color)
+    else:
+        chr.queue_free()
+        chr = null
 
-    var head := MeshInstance.new()
-    var sm := SphereMesh.new()
-    sm.radius = 0.25
-    sm.height = 0.5
-    sm.radial_segments = 8
-    sm.rings = 4
-    head.mesh = sm
-    head.translation = Vector3(0, 1.6, 0)
-    head.material_override = mat
-    visual.add_child(head)
+        var body := MeshInstance.new()
+        var cm := CylinderMesh.new()
+        cm.top_radius = 0.35
+        cm.bottom_radius = 0.4
+        cm.height = 1.4
+        cm.radial_segments = 8
+        cm.rings = 1
+        body.mesh = cm
+        body.translation = Vector3(0, 0.7, 0)
+        body.material_override = mat
+        visual.add_child(body)
+
+        var head := MeshInstance.new()
+        var sm := SphereMesh.new()
+        sm.radius = 0.25
+        sm.height = 0.5
+        sm.radial_segments = 8
+        sm.rings = 4
+        head.mesh = sm
+        head.translation = Vector3(0, 1.6, 0)
+        head.material_override = mat
+        visual.add_child(head)
 
     var gun := MeshInstance.new()
     var gm := CubeMesh.new()
     gm.size = Vector3(0.1, 0.12, 0.7)
     gun.mesh = gm
-    gun.translation = Vector3(0.4, 1.3, -0.5)
+    if chr != null:
+        gun.translation = GUN_POS_MODEL
+    else:
+        gun.translation = Vector3(0.4, 1.3, -0.5)
     gun.material_override = FX.make_mat(Color(0.1, 0.1, 0.1))
     visual.add_child(gun)
 
@@ -93,6 +116,8 @@ func _physics_process(delta: float) -> void:
         flash_t -= delta
         if flash_t <= 0.0:
             mat.albedo_color = base_color
+            if chr != null:
+                chr.set_flash(0.0)
 
     velocity.y -= GRAVITY * delta
 
@@ -152,6 +177,12 @@ func _physics_process(delta: float) -> void:
 
     velocity = move_and_slide(velocity, Vector3.UP, true)
 
+    if chr != null:
+        if move_dir.length() > 0.1:
+            chr.play("run")
+        else:
+            chr.play("idle")
+
 
 func fire(dist: float) -> void:
     var origin: Vector3 = global_transform.origin + Vector3(0, 1.3, 0)
@@ -166,6 +197,8 @@ func fire(dist: float) -> void:
         if hit["collider"] == target:
             target.take_damage(BOT_DAMAGE, self)
     FX.tracer(get_tree().current_scene, origin, end, Color(1.0, 0.45, 0.35))
+    if chr != null:
+        chr.play_once("shoot")
 
 
 func take_damage(amount: float, by = null) -> void:
@@ -173,6 +206,8 @@ func take_damage(amount: float, by = null) -> void:
         return
     health -= amount
     mat.albedo_color = Color(1, 1, 1)
+    if chr != null:
+        chr.set_flash(0.8)
     flash_t = 0.08
     if health <= 0.0:
         die(by)
@@ -181,8 +216,17 @@ func take_damage(amount: float, by = null) -> void:
 func die(by) -> void:
     alive = false
     shape_node.set_deferred("disabled", true)
-    visual.rotation.x = deg2rad(90.0)
-    visual.translation.y = 0.35
+    if chr != null:
+        chr.set_flash(0.0)
+        chr.set_dark(1.0)
+        if chr.has_anim("death"):
+            chr.play_once("death")
+        else:
+            visual.rotation.x = deg2rad(90.0)
+            visual.translation.y = 0.35
+    else:
+        visual.rotation.x = deg2rad(90.0)
+        visual.translation.y = 0.35
     mat.albedo_color = base_color.darkened(0.5)
     emit_signal("bot_died", by)
     get_tree().create_timer(4.0).connect("timeout", self, "queue_free")

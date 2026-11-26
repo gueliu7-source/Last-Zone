@@ -4,6 +4,14 @@ extends KinematicBody
 signal died
 
 const FX = preload("res://fx.gd")
+const CharacterScript = preload("res://character.gd")
+
+# Ajustes do modelo 3D (mude aqui se o modelo da outra IA vier torto ou do tamanho errado)
+const MODEL_HEIGHT := 1.75     # altura do personagem em metros
+const MODEL_YAW := 180.0       # 180 = modelo olhando para +Z (padrão glTF); use 0 se ele ficar de costas
+const OUTLINE_WIDTH := 0.02    # espessura do contorno preto (metros)
+const GUN_POS_MODEL := Vector3(-0.06, 1.23, -0.30)   # arma entre as mãos do modelo Kael (espaço do jogador)
+const MUZZLE_MODEL := Vector3(-0.06, 1.23, -0.68)    # ponta do cano (de onde sai o rastro da bala)
 
 const SPEED := 7.0
 const SPRINT_SPEED := 11.0
@@ -26,6 +34,7 @@ var pitch := 0.0
 var velocity := Vector3.ZERO
 var arm
 var cam
+var chr = null
 
 
 func _ready() -> void:
@@ -39,36 +48,45 @@ func _ready() -> void:
     cs.translation = Vector3(0, 0.9, 0)
     add_child(cs)
 
-    var mat = FX.make_mat(Color(0.2, 0.45, 0.95))
+    # Modelo 3D anime (res://player.glb). Se não existir, usa o boneco simples.
+    chr = CharacterScript.new()
+    add_child(chr)
+    if not chr.setup("res://player.glb", MODEL_HEIGHT, MODEL_YAW, OUTLINE_WIDTH):
+        chr.queue_free()
+        chr = null
+        var mat = FX.make_mat(Color(0.2, 0.45, 0.95))
 
-    var body := MeshInstance.new()
-    var cm := CylinderMesh.new()
-    cm.top_radius = 0.35
-    cm.bottom_radius = 0.4
-    cm.height = 1.4
-    cm.radial_segments = 8
-    cm.rings = 1
-    body.mesh = cm
-    body.translation = Vector3(0, 0.7, 0)
-    body.material_override = mat
-    add_child(body)
+        var body := MeshInstance.new()
+        var cm := CylinderMesh.new()
+        cm.top_radius = 0.35
+        cm.bottom_radius = 0.4
+        cm.height = 1.4
+        cm.radial_segments = 8
+        cm.rings = 1
+        body.mesh = cm
+        body.translation = Vector3(0, 0.7, 0)
+        body.material_override = mat
+        add_child(body)
 
-    var head := MeshInstance.new()
-    var sm := SphereMesh.new()
-    sm.radius = 0.25
-    sm.height = 0.5
-    sm.radial_segments = 8
-    sm.rings = 4
-    head.mesh = sm
-    head.translation = Vector3(0, 1.6, 0)
-    head.material_override = mat
-    add_child(head)
+        var head := MeshInstance.new()
+        var sm := SphereMesh.new()
+        sm.radius = 0.25
+        sm.height = 0.5
+        sm.radial_segments = 8
+        sm.rings = 4
+        head.mesh = sm
+        head.translation = Vector3(0, 1.6, 0)
+        head.material_override = mat
+        add_child(head)
 
     var gun := MeshInstance.new()
     var gm := CubeMesh.new()
     gm.size = Vector3(0.1, 0.12, 0.7)
     gun.mesh = gm
-    gun.translation = Vector3(0.4, 1.3, -0.5)
+    if chr != null:
+        gun.translation = GUN_POS_MODEL
+    else:
+        gun.translation = Vector3(0.4, 1.3, -0.5)
     gun.material_override = FX.make_mat(Color(0.1, 0.1, 0.1))
     add_child(gun)
 
@@ -136,6 +154,12 @@ func _physics_process(delta: float) -> void:
     velocity.z = dir.z * spd
     velocity = move_and_slide(velocity, Vector3.UP, true)
 
+    if chr != null:
+        if dir.length() > 0.1:
+            chr.play("run")
+        else:
+            chr.play("idle")
+
     if Input.is_key_pressed(KEY_R):
         start_reload()
     if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(BUTTON_LEFT):
@@ -157,6 +181,8 @@ func shoot() -> void:
         return
     ammo -= 1
     fire_cd = FIRE_DELAY
+    if chr != null:
+        chr.play_once("shoot")
 
     var from: Vector3 = cam.global_transform.origin
     var dir: Vector3 = -cam.global_transform.basis.z
@@ -169,7 +195,10 @@ func shoot() -> void:
         if c != null and c.has_method("take_damage"):
             c.take_damage(DAMAGE, self)
 
-    var muzzle: Vector3 = global_transform.xform(Vector3(0.4, 1.3, -0.9))
+    var mz := Vector3(0.4, 1.3, -0.9)
+    if chr != null:
+        mz = MUZZLE_MODEL
+    var muzzle: Vector3 = global_transform.xform(mz)
     FX.tracer(get_tree().current_scene, muzzle, end)
 
 
@@ -180,6 +209,8 @@ func take_damage(amount: float, _by = null) -> void:
     if health <= 0.0:
         health = 0.0
         alive = false
+        if chr != null:
+            chr.play_once("death")
         emit_signal("died")
 
 
