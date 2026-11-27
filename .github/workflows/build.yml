@@ -48,4 +48,3 @@ jobs:
         with:
           name: UltimaZona-windows
           path: build
-          

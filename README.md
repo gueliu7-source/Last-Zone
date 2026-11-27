@@ -67,3 +67,10 @@ Eles **aprendem com você**: `brain.gd` observa durante os tiroteios se você de
 direita, se corre ou fica parado, e guarda isso entre partidas. Quanto mais você joga, mais eles
 antecipam seu movimento e mais precisos ficam ("IA: nível" no canto da tela). Para zerar o aprendizado,
 apague o arquivo `brain.cfg` da pasta de dados do jogo.
+
+## Personagens
+
+7 personagens, todos com o mesmo corpo e esqueleto do Kael (as mesmas animações), com roupas, cores e
+acessórios diferentes: **Kael** (`player.glb`), **Raven**, **Rex**, **Nova**, **Blaze**, **Jade** e **Neon**
+(`char_*.glb`, cerca de 4.200 triângulos cada). Na tela inicial, antes de clicar, as teclas **1 a 7** escolhem o
+seu personagem (a escolha fica salva). Os bots usam os outros seis, cada um com um visual.

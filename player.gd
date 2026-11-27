@@ -36,6 +36,7 @@ var velocity := Vector3.ZERO
 var arm
 var cam
 var chr = null
+var model_path := "res://player.glb"   # o main define qual personagem antes de adicionar
 var gun_node = null
 var mode := "ground"        # plane (no avião) · fall (queda livre) · chute (paraquedas) · ground
 var in_air := false
@@ -62,7 +63,10 @@ func _ready() -> void:
     # Modelo 3D anime (res://player.glb). Se não existir, usa o boneco simples.
     chr = CharacterScript.new()
     add_child(chr)
-    if not chr.setup("res://player.glb", MODEL_HEIGHT, MODEL_YAW, OUTLINE_WIDTH):
+    var ok: bool = chr.setup(model_path, MODEL_HEIGHT, MODEL_YAW, OUTLINE_WIDTH)
+    if not ok and model_path != "res://player.glb":
+        ok = chr.setup("res://player.glb", MODEL_HEIGHT, MODEL_YAW, OUTLINE_WIDTH)
+    if not ok:
         chr.queue_free()
         chr = null
         var mat = FX.make_mat(Color(0.2, 0.45, 0.95))
@@ -392,3 +396,14 @@ func _land() -> void:
         gun_node.visible = true
     _snd("land", null, -2.0)
     emit_signal("landed")
+
+
+# Troca a aparência (usado na tela inicial)
+func set_character(path: String) -> void:
+    if chr == null:
+        return
+    chr.queue_free()
+    chr = CharacterScript.new()
+    add_child(chr)
+    if not chr.setup(path, MODEL_HEIGHT, MODEL_YAW, OUTLINE_WIDTH):
+        chr.setup("res://player.glb", MODEL_HEIGHT, MODEL_YAW, OUTLINE_WIDTH)

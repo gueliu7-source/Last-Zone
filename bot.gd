@@ -24,6 +24,7 @@ var alive := true
 var target = null   # o jogador (definido pelo main)
 var zone = null     # a zona (definida pelo main)
 var main = null
+var char_path := ""      # modelo escolhido pelo main (vazio = padrão)
 
 var velocity := Vector3.ZERO
 var flash_t := 0.0
@@ -46,6 +47,8 @@ var avoid_dir := Vector3.ZERO
 var avoid_t := 0.0
 var avoid_hold := 0.0
 var loot_item = null
+var loot_t := 0.0
+var loot_block := 0.0
 var inv_pos := Vector3.ZERO
 var inv_t := 0.0
 var retreat_goal := Vector3.ZERO
@@ -85,11 +88,15 @@ func _ready() -> void:
     # Modelo 3D anime (res://bot.glb). Se não existir, usa o boneco simples colorido.
     chr = CharacterScript.new()
     visual.add_child(chr)
-    var model_path := "res://bot.glb"
-    if not ResourceLoader.exists(model_path):
-        model_path = "res://player.glb"   # sem bot.glb, os bots usam o mesmo modelo (com cor diferente)
+    var model_path: String = char_path
+    var custom: bool = model_path != "" and ResourceLoader.exists(model_path)
+    if not custom:
+        model_path = "res://bot.glb"
+        if not ResourceLoader.exists(model_path):
+            model_path = "res://player.glb"   # sem bot.glb, os bots usam o mesmo modelo (com cor diferente)
     if chr.setup(model_path, MODEL_HEIGHT, MODEL_YAW, OUTLINE_WIDTH):
-        chr.set_tint(base_color)
+        if not custom:
+            chr.set_tint(base_color)
     else:
         chr.queue_free()
         chr = null
@@ -128,7 +135,7 @@ func _ready() -> void:
     gun.material_override = FX.make_mat(Color(0.1, 0.1, 0.1))
     visual.add_child(gun)
 
-    shoot_cd = rand_range(0.5, 2.0)
+    fire_cd = rand_range(0.5, 2.0)
 
 
 func _flat(v: Vector3) -> Vector3:
@@ -279,18 +286,28 @@ func _think() -> void:
             goal_t = 0.0
         return
 
-    if health < MAX_HEALTH * 0.6:
+    loot_block -= 0.3
+    if health < MAX_HEALTH * 0.6 and loot_block <= 0.0:
         if loot_item == null or not main.pickups.has(loot_item):
             loot_item = _find_health()
             if loot_item.empty():
                 loot_item = null
         if loot_item != null:
             state = "loot"
+            loot_t += 0.3
+            if loot_t > 20.0:
+                # não consegue chegar nesse item: desiste por um tempo
+                loot_item = null
+                loot_t = 0.0
+                loot_block = 40.0
+                state = "roam"
+                return
             goal = loot_item["node"].translation
             if _flat(goal - pos).length() < 1.8:
                 if main.take_pickup(loot_item):
                     health = min(health + 40.0, MAX_HEALTH)
                 loot_item = null
+                loot_t = 0.0
                 state = "roam"
             return
 

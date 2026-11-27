@@ -14,6 +14,12 @@ const PLANE_Y := 260.0
 const PLANE_SPEED := 30.0
 
 const BOT_COUNT := 15
+const CHARS := [
+    ["Kael", "res://player.glb"], ["Raven", "res://char_raven.glb"], ["Rex", "res://char_rex.glb"],
+    ["Nova", "res://char_nova.glb"], ["Blaze", "res://char_blaze.glb"], ["Jade", "res://char_jade.glb"],
+    ["Neon", "res://char_neon.glb"]
+]
+const SETTINGS_FILE := "user://settings.cfg"
 const PICKUP_COUNT := 44
 
 var rng := RandomNumberGenerator.new()
@@ -25,6 +31,9 @@ var pickups: Array = []
 var last_region := ""
 var sfx_bank := {}
 var brain
+var char_idx := 0
+var started := false
+var bot_shift := 0
 var cover_points: Array = []   # [x, z, raio] de prédios/caixas grandes (cobertura dos bots)
 var loop_wind
 var loop_engine
@@ -59,6 +68,7 @@ func _ready() -> void:
     OS.window_size = Vector2(1280, 720)
     OS.center_window()
 
+    bot_shift = randi() % 6
     brain = BrainScript.new()
     brain.load_data()
     for b in MapData.BOXES:
@@ -77,7 +87,11 @@ func _ready() -> void:
     zone = ZoneScript.new()
     add_child(zone)
 
+    var cf := ConfigFile.new()
+    if cf.load(SETTINGS_FILE) == OK:
+        char_idx = int(clamp(int(cf.get_value("game", "char", 0)), 0, CHARS.size() - 1))
     player = PlayerScript.new()
+    player.model_path = CHARS[char_idx][1]
     add_child(player)
     player.connect("died", self, "_on_player_died")
     player.connect("landed", self, "_on_landed")
@@ -87,6 +101,7 @@ func _ready() -> void:
         b.translation = spawns[i + 1]
         b.target = player
         b.zone = zone
+        b.char_path = _bot_char(i)
         add_child(b)
         b.connect("bot_died", self, "_on_bot_died")
         bots.append(b)
@@ -129,7 +144,7 @@ func _build_island() -> void:
     # Água (plano grande no nível 0); a ilha fica por cima
     var water := MeshInstance.new()
     var pm := PlaneMesh.new()
-    pm.size = Vector2(900, 900)
+    pm.size = Vector2(5000, 5000)
     water.mesh = pm
     water.translation = Vector3(0, 0.0, 0)
     var wmat := FX.make_mat(Color(0.18, 0.52, 0.78))
@@ -371,6 +386,25 @@ func _notification(what: int) -> void:
         brain.save_data()
 
 
+# Cada bot usa um personagem diferente (os outros 6, em ordem embaralhada por partida)
+func _bot_char(i: int) -> String:
+    var others: Array = []
+    for k in range(CHARS.size()):
+        if k != char_idx:
+            others.append(k)
+    return CHARS[others[(i + bot_shift) % others.size()]][1]
+
+
+func _select_char(k: int) -> void:
+    if k < 0 or k >= CHARS.size() or k == char_idx:
+        return
+    char_idx = k
+    player.set_character(CHARS[k][1])
+    var cf := ConfigFile.new()
+    cf.set_value("game", "char", k)
+    cf.save(SETTINGS_FILE)
+
+
 func _on_landed() -> void:
     zone.active = true
     player.cam.near = 0.1
@@ -472,7 +506,21 @@ func _update_hud(captured: bool) -> void:
         if captured:
             lbl_center.text = ""
         else:
-            lbl_center.text = "CLIQUE PARA JOGAR\n\nWASD mover  •  Mouse mirar  •  Botão esquerdo atirar\nShift correr  •  Espaço pular  •  R recarregar  •  Esc pausar\nF11 tela cheia  •  F2 modo leve\n\nCubos verdes = vida  •  Cubos amarelos = munição\nFique dentro da zona segura!"
+            lbl_center.text = _char_menu() + "CLIQUE PARA JOGAR\n\nWASD mover  •  Mouse mirar  •  Botão esquerdo atirar\nShift correr  •  Espaço pular  •  R recarregar  •  Esc pausar\nF11 tela cheia  •  F2 modo leve\n\nCubos verdes = vida  •  Cubos amarelos = munição\nFique dentro da zona segura!"
+
+
+func _char_menu() -> String:
+    if started:
+        return ""
+    var s: String = "PERSONAGEM (teclas 1-%d):\n" % CHARS.size()
+    for k in range(CHARS.size()):
+        var mark: String = "   "
+        if k == char_idx:
+            mark = ">> "
+        s += "%s%d %s    " % [mark, k + 1, CHARS[k][0]]
+        if k == 3:
+            s += "\n"
+    return s + "\n\n"
 
 
 func _region_name(p: Vector3) -> String:
@@ -509,6 +557,7 @@ func _input(event: InputEvent) -> void:
     if event is InputEventMouseButton and event.pressed and not game_over:
         if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
             Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+            started = true
     if event is InputEventKey and event.pressed and not event.echo:
         if event.scancode == KEY_ESCAPE:
             Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -517,6 +566,8 @@ func _input(event: InputEvent) -> void:
             get_tree().reload_current_scene()
         elif event.scancode == KEY_F11:
             OS.window_fullscreen = not OS.window_fullscreen
+        elif not started and event.scancode >= KEY_1 and event.scancode <= KEY_9:
+            _select_char(event.scancode - KEY_1)
         elif event.scancode == KEY_F2:
             set_quality(1 - quality)
 
@@ -541,6 +592,7 @@ func _process(delta: float) -> void:
         return
 
     _update_loops(delta)
+    zone.mi.visible = (player.mode == "ground")   # no ar a parede da zona atrapalharia a vista
 
     # A IA observa como o jogador se move durante os tiroteios
     if player.alive and player.mode == "ground":
