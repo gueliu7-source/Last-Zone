@@ -217,6 +217,7 @@ func enter_vehicle(v) -> void:
         return
     vehicle = v
     v.driver = self
+    v.wake()
     mode = "drive"
     reloading = false
     if chr != null:

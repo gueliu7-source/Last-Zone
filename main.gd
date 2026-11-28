@@ -28,6 +28,8 @@ var player
 var zone
 var env
 var bots: Array = []
+var lod_nodes: Array = []     # [MeshInstance, é_detalhado, centro_xz] — troca detalhe por distância
+var lod_t := 0.0
 var pickups: Array = []
 var last_region := ""
 var sfx_bank := {}
@@ -47,7 +49,8 @@ var kills := 0
 var rank := 0
 var game_over := false
 
-var quality := 0            # 0 = normal, 1 = leve (automático se cair de 50 fps)
+var quality := 0            # 0 = normal, 1 = leve (cai de 50 fps), 2 = muito leve (cai de 30 fps)
+var lod_radius := 62.0
 var fps_timer := -4.0
 
 var hud
@@ -224,6 +227,11 @@ func _style_island(node: Node, mat: Material, gmat: Material) -> void:
             node.add_to_group("grass")
         elif node.name.begins_with("T_"):
             node.create_trimesh_collision()
+        elif node.name.begins_with("H_") or node.name.begins_with("L_"):
+            var pr: PoolStringArray = node.name.split("_")
+            var key := Vector2(float(pr[1]), float(pr[2]))
+            var ctr := Vector2((key.x + 0.5) * MapData.CHUNK - MapData.HALF, (key.y + 0.5) * MapData.CHUNK - MapData.HALF)
+            lod_nodes.append([node, node.name.begins_with("H_"), ctr])
     for c in node.get_children():
         _style_island(c, mat, gmat)
 
@@ -508,6 +516,8 @@ func _update_hud(captured: bool) -> void:
     var q: String = ""
     if quality == 1:
         q = "  (modo leve)"
+    elif quality == 2:
+        q = "  (modo muito leve)"
     lbl_fps.text = "FPS: %d%s" % [Engine.get_frames_per_second(), q]
     lbl_health.text = "VIDA: %d" % int(ceil(max(player.health, 0.0)))
     var a: String = "MUNIÇÃO: %d / %d" % [player.ammo, player.reserve]
@@ -535,7 +545,7 @@ func _update_hud(captured: bool) -> void:
         if captured:
             lbl_center.text = ""
         else:
-            lbl_center.text = _char_menu() + "CLIQUE PARA JOGAR\n\nWASD mover  •  Mouse mirar  •  Botão esquerdo atirar\nShift correr  •  Espaço pular  •  R recarregar  •  E entrar/sair do carro  •  Esc pausar\nF11 tela cheia  •  F2 modo leve\n\nCubos verdes = vida  •  Cubos amarelos = munição\nFique dentro da zona segura!"
+            lbl_center.text = _char_menu() + "CLIQUE PARA JOGAR\n\nWASD mover  •  Mouse mirar  •  Botão esquerdo atirar\nShift correr  •  Espaço pular  •  R recarregar  •  E entrar/sair do carro  •  Esc pausar\nF11 tela cheia  •  F2 muda a qualidade\n\nCubos verdes = vida  •  Cubos amarelos = munição\nFique dentro da zona segura!"
 
 
 func _char_menu() -> String:
@@ -572,10 +582,18 @@ func set_quality(q: int) -> void:
         cam.far = 170.0
         env.fog_depth_begin = 85.0
         env.fog_depth_end = 160.0
-    else:
+        lod_radius = 62.0
+    elif q == 1:
         cam.far = 90.0
         env.fog_depth_begin = 45.0
         env.fog_depth_end = 85.0
+        lod_radius = 52.0
+    else:
+        cam.far = 65.0
+        env.fog_depth_begin = 30.0
+        env.fog_depth_end = 60.0
+        lod_radius = 36.0
+    lod_t = 0.0
     for g in get_tree().get_nodes_in_group("grass"):
         g.visible = (q == 0)
 
@@ -598,7 +616,7 @@ func _input(event: InputEvent) -> void:
         elif not started and event.scancode >= KEY_1 and event.scancode <= KEY_9:
             _select_char(event.scancode - KEY_1)
         elif event.scancode == KEY_F2:
-            set_quality(1 - quality)
+            set_quality((quality + 1) % 3)
         elif event.scancode == KEY_E and player.alive and not game_over:
             if player.mode == "drive":
                 player.leave_vehicle()
@@ -616,7 +634,25 @@ func _alive_bots() -> int:
     return n
 
 
+func _update_lod(delta: float) -> void:
+    lod_t -= delta
+    if lod_t > 0.0:
+        return
+    lod_t = 0.3
+    var pp := Vector2(player.translation.x, player.translation.z)
+    for e in lod_nodes:
+        var near: bool = pp.distance_to(e[2]) < lod_radius
+        e[0].visible = (near == e[1])
+    # personagens: longe não tem contorno (dobra os triângulos) nem animação (pele custa CPU)
+    for b in bots:
+        if not is_instance_valid(b) or b.chr == null:
+            continue
+        var d: float = pp.distance_to(Vector2(b.translation.x, b.translation.z))
+        b.chr.set_lod(0 if d < 26.0 else (1 if d < 60.0 else 2))
+
+
 func _process(delta: float) -> void:
+    _update_lod(delta)
     var captured: bool = Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
     if not game_over:
         get_tree().paused = not captured
@@ -651,8 +687,11 @@ func _process(delta: float) -> void:
     fps_timer += delta
     if fps_timer >= 3.0:
         fps_timer = 0.0
-        if quality == 0 and (player.mode == "ground" or player.mode == "drive") and Engine.get_frames_per_second() < 50:
+        var playing: bool = player.mode == "ground" or player.mode == "drive"
+        if playing and quality == 0 and Engine.get_frames_per_second() < 50:
             set_quality(1)
+        elif playing and quality == 1 and Engine.get_frames_per_second() < 30:
+            set_quality(2)
 
     # Itens: girar e coletar
     for p in pickups.duplicate():

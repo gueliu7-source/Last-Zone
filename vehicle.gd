@@ -28,6 +28,7 @@ var engine_snd = null
 var hit_cd := {}
 var on_road := false
 var smoke_t := 0.0
+var smoke_left := 0.0
 
 
 func _ready() -> void:
@@ -39,6 +40,7 @@ func _ready() -> void:
     cs.translation = Vector3(0, 0.78, 0)
     add_child(cs)
     add_to_group("vehicles")
+    set_physics_process(false)     # carro parado não gasta processamento até alguém usar
 
     body_vis = Spatial.new()
     add_child(body_vis)
@@ -263,12 +265,22 @@ func _physics_process(delta: float) -> void:
         engine_snd.pitch_scale = 0.55 + clamp(abs(speed) / vmax, 0.0, 1.3) * 1.1
         engine_snd.unit_db = -2.0 + min(abs(th), 1.0) * 3.0
 
-    # fumaça quando a vida está baixa
-    if wrecked or (hp < MAX_HP * 0.35 and driver != null):
+    # fumaça quando a vida está baixa (e por alguns segundos depois de destruído)
+    if wrecked:
+        smoke_left -= delta
+    if (wrecked and smoke_left > 0.0) or (hp < MAX_HP * 0.35 and driver != null and not wrecked):
         smoke_t -= delta
         if smoke_t <= 0.0:
             smoke_t = 0.12
             _puff()
+
+    # dorme quando está parado e sem motorista
+    if driver == null and abs(speed) < 0.2 and vel.length() < 0.4 and is_on_floor() and (not wrecked or smoke_left <= 0.0):
+        set_physics_process(false)
+
+
+func wake() -> void:
+    set_physics_process(true)
 
 
 func _puff() -> void:
@@ -312,6 +324,7 @@ func stop_engine() -> void:
 func take_damage(amount: float, by = null) -> void:
     if wrecked:
         return
+    wake()
     hp -= amount
     if driver != null and by != null:
         driver.take_damage(amount * 0.4, by)
@@ -322,6 +335,8 @@ func take_damage(amount: float, by = null) -> void:
 func _wreck() -> void:
     wrecked = true
     hp = 0.0
+    smoke_left = 6.0
+    wake()
     _darken(body_vis)
     var main = get_tree().current_scene
     if main.has_method("snd"):

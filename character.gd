@@ -15,6 +15,8 @@ const ALIASES = {
 var model_root = null
 var anim = null
 var cels: Array = []
+var outlines: Array = []     # [cel_material, outline_material]
+var lod := 0                 # 0 perto (contorno + animação), 1 médio (sem contorno), 2 longe (sem contorno, animação parada)
 var current := ""
 var lock := 0.0
 
@@ -77,10 +79,21 @@ func _style(node: Node, outline_width: float) -> void:
             ol.shader = OUTLINE_SHADER
             ol.set_shader_param("width", outline_width)
             cel.next_pass = ol
+            outlines.append([cel, ol])
             node.set_surface_material(i, cel)
             cels.append(cel)
     for c in node.get_children():
         _style(c, outline_width)
+
+
+func set_lod(l: int) -> void:
+    if l == lod or lod == -1 or current == "death":
+        return
+    lod = l
+    for e in outlines:
+        e[0].next_pass = e[1] if l == 0 else null
+    if anim != null and current != "death":
+        anim.playback_active = (l < 2)
 
 
 func _find_anim(node: Node):
@@ -134,6 +147,9 @@ func play_once(action: String) -> void:
         return
     var a = anim.get_animation(n)
     a.loop = false
+    if action == "death":
+        anim.playback_active = true
+        lod = -1   # morto: nunca mais pausa a animação
     anim.play(n, 0.05)
     current = action
     lock = a.length

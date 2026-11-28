@@ -1,10 +1,12 @@
 .godot/
-build/
 *.translation
 Godot_v*
+*.tpz
+*.material
 *.import
 .import/
 export_templates/
 build/
 *.zip
-*.tpz
+*.pck
+*.exe
