@@ -173,6 +173,10 @@ func _build_island() -> void:
             root = res.instance()
     if root != null:
         add_child(root)
+        # textura dos prédios: vem embutida no island.glb (atlas); o material do jogo usa ela × cor do vértice
+        var atlas_tex = _find_atlas(root)
+        if atlas_tex != null:
+            island_mat.albedo_texture = atlas_tex
         _style_island(root, island_mat, grass_mat)
     else:
         # Sem o arquivo da ilha: chão plano de emergência
@@ -216,6 +220,18 @@ func _build_island() -> void:
         wc.translation = w
         edge.add_child(wc)
     add_child(edge)
+
+
+func _find_atlas(node: Node):
+    if node is MeshInstance and node.mesh != null and node.mesh.get_surface_count() > 0:
+        var mt = node.mesh.surface_get_material(0)
+        if mt != null and mt is SpatialMaterial and mt.albedo_texture != null:
+            return mt.albedo_texture
+    for c in node.get_children():
+        var r = _find_atlas(c)
+        if r != null:
+            return r
+    return null
 
 
 func _style_island(node: Node, mat: Material, gmat: Material) -> void:

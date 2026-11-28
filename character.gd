@@ -93,6 +93,8 @@ func set_lod(l: int) -> void:
     for e in outlines:
         e[0].next_pass = e[1] if l == 0 else null
     if anim != null and current != "death":
+        if l >= 2:
+            anim.advance(0.03)      # aplica a pose atual antes de pausar (senão fica em T)
         anim.playback_active = (l < 2)
 
 
