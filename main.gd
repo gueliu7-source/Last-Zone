@@ -9,6 +9,7 @@ const FX = preload("res://fx.gd")
 const MapData = preload("res://map_data.gd")
 const Sfx = preload("res://sfx.gd")
 const BrainScript = preload("res://brain.gd")
+const VehicleScript = preload("res://vehicle.gd")
 
 const PLANE_Y := 260.0
 const PLANE_SPEED := 30.0
@@ -107,6 +108,7 @@ func _ready() -> void:
         bots.append(b)
 
     _spawn_pickups(spawns)
+    _spawn_cars()
     _build_hud()
     _start_flight()
 
@@ -224,6 +226,27 @@ func _style_island(node: Node, mat: Material, gmat: Material) -> void:
             node.create_trimesh_collision()
     for c in node.get_children():
         _style_island(c, mat, gmat)
+
+
+func _spawn_cars() -> void:
+    for c in MapData.CARS:
+        var v = VehicleScript.new()
+        v.translation = Vector3(c[0], c[1], c[2])
+        v.rotation.y = c[3]
+        add_child(v)
+
+
+func _nearest_car(maxd: float):
+    var best = null
+    var bd: float = maxd
+    for v in get_tree().get_nodes_in_group("vehicles"):
+        if v.wrecked or v.driver != null:
+            continue
+        var d: float = v.translation.distance_to(player.translation)
+        if d < bd:
+            bd = d
+            best = v
+    return best
 
 
 func _spawn_pickups(spawns: Array) -> void:
@@ -490,6 +513,8 @@ func _update_hud(captured: bool) -> void:
     var a: String = "MUNIÇÃO: %d / %d" % [player.ammo, player.reserve]
     if player.reloading:
         a += "  (recarregando...)"
+    if player.mode == "drive" and player.vehicle != null:
+        a = "VELOCIDADE: %d km/h\nCARRO: %d%%" % [int(abs(player.vehicle.speed) * 3.6), int(player.vehicle.hp / 3.0)]
     lbl_ammo.text = a
     lbl_cross.visible = captured and not game_over
     var hint: String = ""
@@ -499,14 +524,18 @@ func _update_hud(captured: bool) -> void:
         hint = "\nESPAÇO: abrir paraquedas (abre sozinho perto do chão)  •  WASD: direcionar"
     elif player.mode == "chute":
         hint = "\nWASD: direcionar a descida"
-    if player.mode != "ground":
+    if player.mode == "drive":
+        hint = "\nE: sair do carro  •  W/S acelerar e frear  •  A/D virar  •  Espaço: freio de mão  •  C: olhar em volta"
+    elif player.mode == "ground" and player.alive and _nearest_car(4.5) != null:
+        hint = "\nE: dirigir o carro"
+    if player.mode != "ground" and player.mode != "drive":
         hint += "\nALTURA: %d m" % int(player.translation.y)
     lbl_region.text = _region_name(player.translation) + hint
     if not game_over:
         if captured:
             lbl_center.text = ""
         else:
-            lbl_center.text = _char_menu() + "CLIQUE PARA JOGAR\n\nWASD mover  •  Mouse mirar  •  Botão esquerdo atirar\nShift correr  •  Espaço pular  •  R recarregar  •  Esc pausar\nF11 tela cheia  •  F2 modo leve\n\nCubos verdes = vida  •  Cubos amarelos = munição\nFique dentro da zona segura!"
+            lbl_center.text = _char_menu() + "CLIQUE PARA JOGAR\n\nWASD mover  •  Mouse mirar  •  Botão esquerdo atirar\nShift correr  •  Espaço pular  •  R recarregar  •  E entrar/sair do carro  •  Esc pausar\nF11 tela cheia  •  F2 modo leve\n\nCubos verdes = vida  •  Cubos amarelos = munição\nFique dentro da zona segura!"
 
 
 func _char_menu() -> String:
@@ -536,7 +565,7 @@ func _region_name(p: Vector3) -> String:
 
 func set_quality(q: int) -> void:
     quality = q
-    if player.mode != "ground":
+    if player.mode != "ground" and player.mode != "drive":
         return
     var cam = player.cam
     if q == 0:
@@ -570,6 +599,13 @@ func _input(event: InputEvent) -> void:
             _select_char(event.scancode - KEY_1)
         elif event.scancode == KEY_F2:
             set_quality(1 - quality)
+        elif event.scancode == KEY_E and player.alive and not game_over:
+            if player.mode == "drive":
+                player.leave_vehicle()
+            elif player.mode == "ground":
+                var v = _nearest_car(4.5)
+                if v != null:
+                    player.enter_vehicle(v)
 
 
 func _alive_bots() -> int:
@@ -592,7 +628,7 @@ func _process(delta: float) -> void:
         return
 
     _update_loops(delta)
-    zone.mi.visible = (player.mode == "ground")   # no ar a parede da zona atrapalharia a vista
+    zone.mi.visible = (player.mode == "ground" or player.mode == "drive")   # no ar a parede da zona atrapalharia a vista
 
     # A IA observa como o jogador se move durante os tiroteios
     if player.alive and player.mode == "ground":
@@ -615,7 +651,7 @@ func _process(delta: float) -> void:
     fps_timer += delta
     if fps_timer >= 3.0:
         fps_timer = 0.0
-        if quality == 0 and player.mode == "ground" and Engine.get_frames_per_second() < 50:
+        if quality == 0 and (player.mode == "ground" or player.mode == "drive") and Engine.get_frames_per_second() < 50:
             set_quality(1)
 
     # Itens: girar e coletar
@@ -636,7 +672,7 @@ func _process(delta: float) -> void:
     if zone.shrinking and not was_shrinking:
         snd("zone", null, -4.0)
     was_shrinking = zone.shrinking
-    if player.alive and player.mode == "ground" and zone.is_outside(player.translation):
+    if player.alive and (player.mode == "ground" or player.mode == "drive") and zone.is_outside(player.translation):
         player.take_damage(dps * delta, null)
     for b in bots:
         if zone.active and is_instance_valid(b) and b.alive and zone.is_outside(b.translation):

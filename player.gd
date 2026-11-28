@@ -46,6 +46,8 @@ var air_t := 0.0
 var step_t := 0.0
 var canopy = null
 var agl := 0.0
+var vehicle = null          # carro que está dirigindo (mode == "drive")
+var cshape = null
 
 
 func _ready() -> void:
@@ -59,6 +61,7 @@ func _ready() -> void:
     cs.rotation_degrees = Vector3(90, 0, 0)
     cs.translation = Vector3(0, 0.9, 0)
     add_child(cs)
+    cshape = cs
 
     # Modelo 3D anime (res://player.glb). Se não existir, usa o boneco simples.
     chr = CharacterScript.new()
@@ -143,6 +146,9 @@ func _physics_process(delta: float) -> void:
         if plane != null:
             translation = plane.translation + Vector3(0, -4.0, 0)
         return
+    if mode == "drive":
+        _drive(delta)
+        return
     if mode != "ground":
         _air(delta)
         return
@@ -206,6 +212,66 @@ func _physics_process(delta: float) -> void:
         shoot()
 
 
+func enter_vehicle(v) -> void:
+    if mode != "ground" or v == null or v.wrecked or v.driver != null:
+        return
+    vehicle = v
+    v.driver = self
+    mode = "drive"
+    reloading = false
+    if chr != null:
+        chr.visible = false
+    if gun_node != null:
+        gun_node.visible = false
+    if cshape != null:
+        cshape.disabled = true
+    arm.add_excluded_object(v.get_rid())
+    arm.spring_length = 7.5
+    arm.translation = Vector3(0, 2.4, 0)
+    var main = get_tree().current_scene
+    v.start_engine(main.sfx_bank.get("engine") if "sfx_bank" in main else null)
+    _snd("pickup", null, -8.0, 0.7)
+
+
+func leave_vehicle(forced: bool = false) -> void:
+    if vehicle == null:
+        return
+    var v = vehicle
+    var out: Vector3 = v.global_transform.origin + v.global_transform.basis.x * -2.4 + Vector3(0, 1.0, 0)
+    # tenta o lado esquerdo; se estiver bloqueado usa o direito
+    var space = get_world().direct_space_state
+    if not space.intersect_ray(v.global_transform.origin + Vector3(0, 1.0, 0), out, [v]).empty():
+        out = v.global_transform.origin + v.global_transform.basis.x * 2.4 + Vector3(0, 1.0, 0)
+    v.driver = null
+    v.ctrl = Vector3.ZERO
+    v.stop_engine()
+    vehicle = null
+    mode = "ground"
+    arm.remove_excluded_object(v.get_rid())
+    arm.spring_length = 3.4
+    arm.translation = Vector3(0.7, 1.7, 0)
+    cam.fov = 70.0
+    translation = out
+    velocity = Vector3.ZERO
+    if chr != null:
+        chr.visible = true
+    if gun_node != null:
+        gun_node.visible = true
+    if cshape != null:
+        cshape.disabled = false
+
+
+func _drive(delta: float) -> void:
+    if vehicle == null or not is_instance_valid(vehicle):
+        leave_vehicle(true)
+        return
+    translation = vehicle.global_transform.origin + Vector3(0, 0.3, 0)
+    # a câmera volta devagar para trás do carro quando você acelera
+    if abs(vehicle.speed) > 3.0 and not Input.is_key_pressed(KEY_C):
+        rotation.y = lerp_angle(rotation.y, vehicle.rotation.y if vehicle.speed > 0 else vehicle.rotation.y + PI, min(delta * 1.4, 1.0))
+    cam.fov = lerp(cam.fov, 70.0 + clamp(abs(vehicle.speed) / 30.0, 0.0, 1.0) * 14.0, min(delta * 3.0, 1.0))
+
+
 func start_reload() -> void:
     if reloading or reserve <= 0 or ammo >= MAG_SIZE:
         return
@@ -256,6 +322,8 @@ func take_damage(amount: float, _by = null) -> void:
         _snd("hurt", null, -3.0)
     if health <= 0.0:
         health = 0.0
+        if vehicle != null:
+            leave_vehicle(true)
         alive = false
         if chr != null:
             chr.play_once("death")

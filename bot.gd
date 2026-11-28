@@ -177,7 +177,10 @@ func _los(c) -> bool:
     var o: Vector3 = global_transform.origin + Vector3(0, 1.4, 0)
     var t: Vector3 = c.global_transform.origin + Vector3(0, 1.2, 0)
     var hit: Dictionary = get_world().direct_space_state.intersect_ray(o, t, [self])
-    return hit.empty() or hit["collider"] == c
+    if hit.empty() or hit["collider"] == c:
+        return true
+    var veh = c.get("vehicle")   # jogador dentro de um carro: o carro conta como o jogador
+    return veh != null and hit["collider"] == veh
 
 
 func _find_health() -> Dictionary:
